@@ -1,0 +1,6 @@
+{
+  "name": "hello_terry",
+  "version": "1.0.0",
+  "description": "A working sample plugin that proves TerryGPT can load external commands."
+}
+

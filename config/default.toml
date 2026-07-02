@@ -1,0 +1,50 @@
+[database]
+path = "data/terrygpt.sqlite"
+
+[logging]
+path = "data/logs/terrygpt.log"
+level = "INFO"
+
+[ollama]
+base_url = "http://127.0.0.1:11434"
+default_model = ""
+request_timeout_seconds = 120
+
+[brain]
+default_provider = "ollama"
+default_model = ""
+temperature = 0.7
+top_p = 0.9
+maximum_tokens = 2048
+streaming_enabled = true
+memory_enabled = true
+system_prompt = "You are TerryGPT, a local-first assistant running on Terry's Windows PC."
+
+[api]
+host = "127.0.0.1"
+port = 8765
+token_path = "data/secrets.toml"
+
+[plugins]
+directory = "plugins"
+
+[desktop]
+start_api_with_desktop = false
+
+[hardware]
+gpu_enabled = true
+cpu_threads = 0
+memory_limit_mb = 0
+
+[security]
+require_confirmation = true
+allow_terminal_commands = false
+api_enabled = false
+
+[theme]
+name = "TerryGPT Dark"
+accent_color = "#3b82f6"
+
+[voice]
+speech_to_text_enabled = false
+text_to_speech_enabled = false
