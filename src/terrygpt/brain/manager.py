@@ -12,6 +12,7 @@ from terrygpt.brain.memory_integration import BrainMemoryIntegration
 from terrygpt.brain.model_manager import ModelManager
 from terrygpt.brain.models import BrainSettings, ResponseChunk
 from terrygpt.brain.prompt_manager import PromptManager
+from terrygpt.brain.task_router import TaskRouter, TaskType
 from terrygpt.configuration.manager import ConfigurationManager
 from terrygpt.core.module import BaseModule, ModuleHealth
 from terrygpt.database.manager import DatabaseManager, new_id, utc_now
@@ -34,6 +35,7 @@ class AIManager(BaseModule):
         self.context_builder: ContextBuilder | None = None
         self.memory_integration: BrainMemoryIntegration | None = None
         self._settings_cache: BrainSettings | None = None
+        self.task_router = TaskRouter()
 
     def on_initialize(self) -> None:
         self.database = self._module("database", DatabaseManager)
@@ -128,6 +130,15 @@ class AIManager(BaseModule):
         request_id = new_id()
         started = time.perf_counter()
         settings = self.settings()
+        task = self.task_router.detect(user_message)
+        if task == TaskType.IMAGE:
+            yield ResponseChunk(
+                content="🖼️ Image generation is coming soon.",
+                done=True,
+                conversation_id=conversation_id or "",
+                request_id=request_id,
+            )
+            return
         model = self._select_model(settings)
         if model is None:
             error = "No AI model is available. Install an Ollama model and refresh models."
