@@ -50,6 +50,18 @@ DEFAULT_RUNTIME_SETTINGS: dict[str, dict[str, Any]] = {
         "text_to_speech_enabled": False,
         "speech_to_text_enabled": False,
     },
+    "media": {
+        "enabled": True,
+        "default_provider": "stable_diffusion",
+        "output_directory": "data/media",
+        "model_id": "runwayml/stable-diffusion-v1-5",
+        "num_inference_steps": 40,
+        "guidance_scale": 8.0,
+        "negative_prompt": (
+            "blurry, low quality, black image, dark, distorted, "
+            "deformed, cropped, watermark, text"
+        ),
+    },
 }
 
 

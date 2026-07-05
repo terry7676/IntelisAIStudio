@@ -48,3 +48,12 @@ accent_color = "#3b82f6"
 [voice]
 speech_to_text_enabled = false
 text_to_speech_enabled = false
+
+[media]
+enabled = true
+default_provider = "stable_diffusion"
+output_directory = "data/media"
+model_id = "runwayml/stable-diffusion-v1-5"
+num_inference_steps = 40
+guidance_scale = 8.0
+negative_prompt = "blurry, low quality, black image, dark, distorted, deformed, cropped, watermark, text"

@@ -18,6 +18,12 @@ dependencies = [
 dev = [
   "pytest>=8.0.0"
 ]
+media = [
+  "torch",
+  "diffusers[torch]",
+  "transformers",
+  "accelerate",
+]
 
 [project.scripts]
 terrygpt = "terrygpt.__main__:main"

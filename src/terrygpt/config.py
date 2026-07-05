@@ -43,6 +43,17 @@ class DesktopSettings:
 
 
 @dataclass(frozen=True)
+class MediaSettings:
+    enabled: bool
+    default_provider: str
+    output_directory: Path
+    model_id: str
+    num_inference_steps: int
+    guidance_scale: float
+    negative_prompt: str
+
+
+@dataclass(frozen=True)
 class TerryConfig:
     project_root: Path
     database: DatabaseSettings
@@ -51,6 +62,7 @@ class TerryConfig:
     api: ApiSettings
     plugins: PluginSettings
     desktop: DesktopSettings
+    media: MediaSettings
 
 
 def _read_toml(path: Path) -> dict[str, Any]:
@@ -109,6 +121,7 @@ def load_config(config_path: Path | None = None) -> TerryConfig:
     api = _section(data, "api")
     plugins = _section(data, "plugins")
     desktop = _section(data, "desktop")
+    media = _section(data, "media")
 
     return TerryConfig(
         project_root=root,
@@ -129,5 +142,19 @@ def load_config(config_path: Path | None = None) -> TerryConfig:
         ),
         plugins=PluginSettings(directory=_resolve_path(root, str(plugins.get("directory", "plugins")))),
         desktop=DesktopSettings(start_api_with_desktop=bool(desktop.get("start_api_with_desktop", False))),
+        media=MediaSettings(
+            enabled=bool(media.get("enabled", True)),
+            default_provider=str(media.get("default_provider", "stable_diffusion")),
+            output_directory=_resolve_path(root, str(media.get("output_directory", "data/media"))),
+            model_id=str(media.get("model_id", "runwayml/stable-diffusion-v1-5")),
+            num_inference_steps=int(media.get("num_inference_steps", 40)),
+            guidance_scale=float(media.get("guidance_scale", 8.0)),
+            negative_prompt=str(
+                media.get(
+                    "negative_prompt",
+                    "blurry, low quality, black image, dark, distorted, deformed, cropped, watermark, text",
+                )
+            ),
+        ),
     )
 

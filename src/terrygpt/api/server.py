@@ -5,8 +5,10 @@ from pathlib import Path
 from typing import Annotated
 
 from terrygpt.config import TerryConfig, load_config
+from terrygpt.api.schemas import BrainSettingsRequest, ChatRequest, ImageGenerateRequest, RenameConversationRequest
 from terrygpt.brain.manager import AIManager
 from terrygpt.core.manager import CoreManager
+from terrygpt.media.manager import MediaManager
 from terrygpt.services.security import ApiTokenStore
 
 try:
@@ -81,6 +83,40 @@ def create_app(config: TerryConfig | None = None):
         if not isinstance(module, AIManager):
             raise HTTPException(status_code=500, detail="AI Manager is unavailable.")
         return module
+
+    def media_manager() -> MediaManager:
+        module = core.module("media_manager")
+        if not isinstance(module, MediaManager):
+            raise HTTPException(status_code=500, detail="Media Manager is unavailable.")
+        return module
+
+    @app.get("/media/providers", dependencies=[Depends(require_auth)])
+    def media_providers() -> dict[str, object]:
+        manager = media_manager()
+        return {"providers": [provider.__dict__ for provider in manager.list_providers()]}
+
+    @app.get("/media/images", dependencies=[Depends(require_auth)])
+    def media_images(limit: int = 20) -> dict[str, object]:
+        manager = media_manager()
+        return {"images": [image.__dict__ for image in manager.list_recent_images(limit)]}
+
+    @app.post("/media/images/generate", dependencies=[Depends(require_auth)])
+    def media_generate_image(request: ImageGenerateRequest) -> dict[str, object]:
+        manager = media_manager()
+        try:
+            result = manager.generate_image(
+                request.prompt,
+                negative_prompt=request.negative_prompt or "",
+                provider_name=request.provider or "",
+                seed=request.seed,
+                num_inference_steps=request.num_inference_steps,
+                guidance_scale=request.guidance_scale,
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        payload = result.__dict__.copy()
+        payload["output_path"] = str(result.output_path)
+        return {"image": payload}
 
     @app.get("/brain/models", dependencies=[Depends(require_auth)])
     def brain_models() -> dict[str, object]:
@@ -159,4 +195,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-    from terrygpt.api.schemas import BrainSettingsRequest, ChatRequest, RenameConversationRequest

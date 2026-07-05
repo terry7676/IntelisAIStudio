@@ -48,6 +48,8 @@ class DependencyChecker(BaseModule):
             self._real_esrgan_status(),
             self._tesseract_status(),
             self._gpu_status(),
+            self._module_status("torch", required=False),
+            self._module_status("diffusers", required=False),
         ]
 
     def health(self) -> ModuleHealth:

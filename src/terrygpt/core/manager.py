@@ -14,6 +14,7 @@ from terrygpt.core.module import BaseModule, ModuleHealth, ModuleState
 from terrygpt.database.manager import DatabaseManager
 from terrygpt.logging.manager import LogManager
 from terrygpt.memory.engine import MemoryEngine
+from terrygpt.media.manager import MediaManager
 from terrygpt.plugins.loader import PluginLoader
 from terrygpt.resources.monitor import ResourceMonitor
 from terrygpt.security.manager import SecurityManager
@@ -51,6 +52,7 @@ class CoreManager:
         manager.register(SecurityManager())
         manager.register(ai_registry)
         manager.register(MemoryEngine())
+        manager.register(MediaManager(config))
         manager.register(AIManager())
         manager.register(PluginLoader(config.plugins.directory))
         manager.register(TaskScheduler())

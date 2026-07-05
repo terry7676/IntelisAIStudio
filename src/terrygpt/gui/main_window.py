@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import QObject, QThread, QTimer, Qt, Signal
-from PySide6.QtGui import QTextCursor
+from PySide6.QtGui import QPixmap, QTextCursor
 from PySide6.QtWidgets import (
     QComboBox,
     QDockWidget,
@@ -26,6 +26,8 @@ from PySide6.QtWidgets import (
 
 from terrygpt.brain.manager import AIManager
 from terrygpt.core.manager import CoreManager
+from terrygpt.media.manager import MediaManager
+from terrygpt.media.models import ImageGenerationResult
 from terrygpt.resources.monitor import ResourceMonitor, ResourceSnapshot
 from terrygpt.themes.dark import DARK_STYLESHEET
 
@@ -74,6 +76,35 @@ class BrainChatWorker(QObject):
             self.failed.emit(str(exc))
 
 
+class ImageGenerationWorker(QObject):
+    finished = Signal(object)
+    failed = Signal(str)
+
+    def __init__(
+        self,
+        media_manager: MediaManager,
+        prompt: str,
+        negative_prompt: str,
+        provider_name: str,
+    ) -> None:
+        super().__init__()
+        self.media_manager = media_manager
+        self.prompt = prompt
+        self.negative_prompt = negative_prompt
+        self.provider_name = provider_name
+
+    def run(self) -> None:
+        try:
+            result = self.media_manager.generate_image(
+                self.prompt,
+                negative_prompt=self.negative_prompt,
+                provider_name=self.provider_name,
+            )
+            self.finished.emit(result)
+        except Exception as exc:
+            self.failed.emit(str(exc))
+
+
 class TerryMainWindow(QMainWindow):
     def __init__(self, core: CoreManager) -> None:
         super().__init__()
@@ -81,9 +112,14 @@ class TerryMainWindow(QMainWindow):
         self.ai_manager = core.module("ai_manager")
         if not isinstance(self.ai_manager, AIManager):
             raise RuntimeError("AI Manager is not available.")
+        self.media_manager = core.module("media_manager")
+        if not isinstance(self.media_manager, MediaManager):
+            raise RuntimeError("Media Manager is not available.")
         self.active_conversation_id: str | None = None
         self.chat_thread: QThread | None = None
         self.chat_worker: BrainChatWorker | None = None
+        self.image_thread: QThread | None = None
+        self.image_worker: ImageGenerationWorker | None = None
         self.notifications: list[str] = []
         self.setWindowTitle("TerryGPT Core Engine")
         self.resize(1360, 860)
@@ -102,7 +138,7 @@ class TerryMainWindow(QMainWindow):
         self.pages.addWidget(self._locked_page("Agents", "Agent execution is not enabled in Phase 2."))
         self.pages.addWidget(self._locked_page("Files", "File tools are not enabled in Phase 2."))
         self.pages.addWidget(self._locked_page("Documents", "Document processing is not enabled in Phase 2."))
-        self.pages.addWidget(self._locked_page("Images", "Image tools are not enabled in Phase 2."))
+        self.pages.addWidget(self._images_page())
         self.pages.addWidget(self._locked_page("Video", "Video tools are not enabled in Phase 2."))
         self.pages.addWidget(self._locked_page("Audio", "Audio tools are not enabled in Phase 2."))
         self.pages.addWidget(self._locked_page("Automation", "Automation execution is not enabled in Phase 2."))
@@ -265,6 +301,63 @@ class TerryMainWindow(QMainWindow):
         self._refresh_conversations()
         return root
 
+    def _images_page(self) -> QWidget:
+        root = QWidget()
+        layout = QHBoxLayout(root)
+
+        sidebar = QVBoxLayout()
+        title = QLabel("Images")
+        title.setObjectName("PageTitle")
+        self.image_gallery = QListWidget()
+        self.image_gallery.currentRowChanged.connect(self._select_gallery_image)
+        refresh_gallery_button = QPushButton("Refresh Gallery")
+        refresh_gallery_button.clicked.connect(self._refresh_image_gallery)
+        sidebar.addWidget(title)
+        sidebar.addWidget(QLabel("Recent Images"))
+        sidebar.addWidget(self.image_gallery, 1)
+        sidebar.addWidget(refresh_gallery_button)
+
+        main = QVBoxLayout()
+        provider_row = QHBoxLayout()
+        self.image_provider_combo = QComboBox()
+        refresh_providers_button = QPushButton("Refresh Providers")
+        refresh_providers_button.clicked.connect(self._refresh_image_providers)
+        provider_row.addWidget(QLabel("Provider"))
+        provider_row.addWidget(self.image_provider_combo, 1)
+        provider_row.addWidget(refresh_providers_button)
+
+        self.image_prompt = QPlainTextEdit()
+        self.image_prompt.setPlaceholderText("Describe the image you want to generate")
+        self.image_negative_prompt = QPlainTextEdit()
+        self.image_negative_prompt.setPlaceholderText("Optional negative prompt")
+        self.image_negative_prompt.setMaximumHeight(72)
+
+        self.image_status = QLabel("Ready")
+        self.image_status.setObjectName("MutedText")
+        self.image_preview = QLabel("Generated image preview")
+        self.image_preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.image_preview.setMinimumHeight(320)
+        self.image_preview.setStyleSheet("border: 1px solid #334155; background: #0f172a;")
+
+        self.generate_image_button = QPushButton("Generate Image")
+        self.generate_image_button.clicked.connect(self._generate_image)
+
+        main.addLayout(provider_row)
+        main.addWidget(QLabel("Prompt"))
+        main.addWidget(self.image_prompt, 1)
+        main.addWidget(QLabel("Negative Prompt"))
+        main.addWidget(self.image_negative_prompt)
+        main.addWidget(self.image_status)
+        main.addWidget(self.image_preview, 2)
+        main.addWidget(self.generate_image_button)
+
+        layout.addLayout(sidebar, 1)
+        layout.addLayout(main, 3)
+
+        self._refresh_image_providers()
+        self._refresh_image_gallery()
+        return root
+
     def _memory_page(self) -> QWidget:
         root = QWidget()
         layout = QVBoxLayout(root)
@@ -362,7 +455,7 @@ class TerryMainWindow(QMainWindow):
 
     def _refresh_settings(self) -> None:
         module = self.core.module("configuration")
-        categories = ["ai", "hardware", "preferences", "plugins", "security", "theme", "voice"]
+        categories = ["ai", "hardware", "preferences", "plugins", "security", "theme", "voice", "media"]
         lines = []
         for category in categories:
             settings = getattr(module, "get_category")(category)
@@ -497,6 +590,103 @@ class TerryMainWindow(QMainWindow):
     def _set_chat_busy(self, busy: bool) -> None:
         self.chat_input.setDisabled(busy)
         self.send_chat_button.setDisabled(busy)
+
+    def _refresh_image_providers(self) -> None:
+        if not hasattr(self, "image_provider_combo"):
+            return
+        current = self.image_provider_combo.currentText()
+        providers = self.media_manager.list_providers()
+        self.image_provider_combo.blockSignals(True)
+        self.image_provider_combo.clear()
+        for provider in providers:
+            label = provider.name if provider.available else f"{provider.name} (unavailable)"
+            self.image_provider_combo.addItem(label, provider.name)
+        if current:
+            index = self.image_provider_combo.findData(current)
+            if index >= 0:
+                self.image_provider_combo.setCurrentIndex(index)
+        self.image_provider_combo.blockSignals(False)
+
+    def _refresh_image_gallery(self) -> None:
+        if not hasattr(self, "image_gallery"):
+            return
+        images = self.media_manager.list_recent_images()
+        self.image_gallery.blockSignals(True)
+        self.image_gallery.clear()
+        for image in images:
+            item = QListWidgetItem(image.output_path.name)
+            item.setData(Qt.ItemDataRole.UserRole, str(image.output_path))
+            self.image_gallery.addItem(item)
+        self.image_gallery.blockSignals(False)
+
+    def _select_gallery_image(self, row: int) -> None:
+        item = self.image_gallery.item(row)
+        if item is None:
+            return
+        path = item.data(Qt.ItemDataRole.UserRole)
+        if isinstance(path, str):
+            self._show_image_preview(Path(path))
+
+    def _generate_image(self) -> None:
+        prompt = self.image_prompt.toPlainText().strip()
+        if not prompt:
+            self.image_status.setText("Enter a prompt before generating.")
+            return
+
+        provider_name = self.image_provider_combo.currentData()
+        if not isinstance(provider_name, str) or not provider_name:
+            self.image_status.setText("Select an image provider.")
+            return
+
+        self.image_status.setText("Generating image...")
+        self._set_image_busy(True)
+
+        self.image_thread = QThread()
+        self.image_worker = ImageGenerationWorker(
+            self.media_manager,
+            prompt,
+            self.image_negative_prompt.toPlainText().strip(),
+            provider_name,
+        )
+        self.image_worker.moveToThread(self.image_thread)
+        self.image_thread.started.connect(self.image_worker.run)
+        self.image_worker.finished.connect(self._image_finished)
+        self.image_worker.failed.connect(self._image_failed)
+        self.image_worker.finished.connect(self.image_thread.quit)
+        self.image_worker.failed.connect(self.image_thread.quit)
+        self.image_worker.finished.connect(self.image_worker.deleteLater)
+        self.image_worker.failed.connect(self.image_worker.deleteLater)
+        self.image_thread.finished.connect(self.image_thread.deleteLater)
+        self.image_thread.start()
+
+    def _image_finished(self, result: object) -> None:
+        if isinstance(result, ImageGenerationResult):
+            self.image_status.setText(f"Saved to {result.output_path}")
+            self._show_image_preview(result.output_path)
+            self._refresh_image_gallery()
+        self._set_image_busy(False)
+
+    def _image_failed(self, message: str) -> None:
+        self.image_status.setText(f"Error: {message}")
+        self._set_image_busy(False)
+
+    def _show_image_preview(self, path: Path) -> None:
+        pixmap = QPixmap(str(path))
+        if pixmap.isNull():
+            self.image_preview.setText(f"Could not load image: {path}")
+            return
+        scaled = pixmap.scaled(
+            self.image_preview.size(),
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+        self.image_preview.setPixmap(scaled)
+
+    def _set_image_busy(self, busy: bool) -> None:
+        self.generate_image_button.setDisabled(busy)
+        self.image_prompt.setDisabled(busy)
+        self.image_negative_prompt.setDisabled(busy)
+        self.image_provider_combo.setDisabled(busy)
 
     def _refresh_logs(self) -> None:
         log_dir = self.core.context.config.logging.path.parent

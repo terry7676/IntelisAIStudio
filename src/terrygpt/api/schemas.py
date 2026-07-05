@@ -30,3 +30,12 @@ class BrainSettingsRequest(BaseModel):
 class MemorySearchRequest(BaseModel):
     query: str = Field(min_length=1)
     limit: int = Field(default=20, ge=1, le=100)
+
+
+class ImageGenerateRequest(BaseModel):
+    prompt: str = Field(min_length=1)
+    negative_prompt: str | None = None
+    provider: str | None = None
+    seed: int | None = None
+    num_inference_steps: int | None = Field(default=None, ge=1, le=150)
+    guidance_scale: float | None = Field(default=None, ge=0, le=30)

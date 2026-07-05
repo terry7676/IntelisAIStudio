@@ -53,6 +53,7 @@ class CoreManagerTests(unittest.TestCase):
                 self.assertIn("database", module_names)
                 self.assertIn("memory_engine", module_names)
                 self.assertIn("plugin_loader", module_names)
+                self.assertIn("media_manager", module_names)
                 self.assertIn("task_scheduler", module_names)
                 self.assertEqual(core.module("database").state, ModuleState.STARTED)
             finally:

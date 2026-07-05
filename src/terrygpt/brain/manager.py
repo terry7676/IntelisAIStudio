@@ -16,6 +16,7 @@ from terrygpt.brain.task_router import TaskRouter, TaskType
 from terrygpt.configuration.manager import ConfigurationManager
 from terrygpt.core.module import BaseModule, ModuleHealth
 from terrygpt.database.manager import DatabaseManager, new_id, utc_now
+from terrygpt.media.manager import MediaManager
 from terrygpt.memory.engine import MemoryEngine
 
 
@@ -132,12 +133,28 @@ class AIManager(BaseModule):
         settings = self.settings()
         task = self.task_router.detect(user_message)
         if task == TaskType.IMAGE:
-            yield ResponseChunk(
-                content="🖼️ Image generation is coming soon.",
-                done=True,
-                conversation_id=conversation_id or "",
-                request_id=request_id,
-            )
+            active_conversation_id = conversation_id or self.create_conversation(user_message[:80])
+            conversations = self._conversations()
+            conversations.add_message(active_conversation_id, "user", user_message)
+            try:
+                result = self._media_manager().generate_image(user_message)
+                message = f"Image generated and saved to {result.output_path}"
+                conversations.add_message(
+                    active_conversation_id,
+                    "assistant",
+                    message,
+                    metadata={"image_path": str(result.output_path), "provider": result.provider_name},
+                )
+                yield ResponseChunk(
+                    content=message,
+                    done=True,
+                    conversation_id=active_conversation_id,
+                    request_id=request_id,
+                )
+            except Exception as exc:
+                error = str(exc)
+                self._notify_failure(error)
+                yield ResponseChunk("", True, active_conversation_id, request_id, error=error)
             return
         model = self._select_model(settings)
         if model is None:
@@ -389,3 +406,6 @@ class AIManager(BaseModule):
         if self.memory_integration is None:
             self.memory_integration = BrainMemoryIntegration(self._conversations(), self._memory())
         return self.memory_integration
+
+    def _media_manager(self) -> MediaManager:
+        return self._module("media_manager", MediaManager)
