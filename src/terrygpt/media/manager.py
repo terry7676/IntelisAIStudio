@@ -21,7 +21,7 @@ class MediaSettings:
     enabled: bool = True
     default_provider: str = "stable_diffusion"
     output_directory: Path = Path("data/media")
-    model_id: str = "runwayml/stable-diffusion-v1-5"
+    model_id: str = "stabilityai/stable-diffusion-2-1"
     num_inference_steps: int = 40
     guidance_scale: float = 8.0
     negative_prompt: str = (

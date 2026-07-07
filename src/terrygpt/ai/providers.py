@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 from terrygpt.core.module import BaseModule, ModuleHealth
+from terrygpt.ai.lmstudio import LMStudioProvider
 
 
 @dataclass(frozen=True)
