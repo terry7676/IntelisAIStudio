@@ -8,6 +8,7 @@ from terrygpt.configuration.manager import ConfigurationManager
 from terrygpt.core.module import BaseModule, ModuleHealth
 from terrygpt.database.manager import new_id, utc_now
 from terrygpt.media.images.diffusers_provider import StableDiffusionProvider
+from terrygpt.media.videos.animatediff_provider import AnimateDiffProvider
 from terrygpt.media.videos.generator import VideoGenerator
 from terrygpt.media.models import ImageGenerationRequest, ImageGenerationResult, ProviderInfo
 from terrygpt.media.provider import MediaProvider, ProgressCallback
@@ -21,7 +22,7 @@ class MediaSettings:
     enabled: bool = True
     default_provider: str = "stable_diffusion"
     output_directory: Path = Path("data/media")
-    model_id: str = "stabilityai/stable-diffusion-2-1"
+    model_id: str = "stabilityai/stable-diffusion-xl-base-1.0"
     num_inference_steps: int = 40
     guidance_scale: float = 8.0
     negative_prompt: str = (
@@ -54,6 +55,14 @@ class MediaManager(BaseModule):
 
         video_gen = VideoGenerator()
         self._providers[video_gen.name] = video_gen
+
+        animatediff = AnimateDiffProvider(
+            base_model=settings.model_id,
+            num_frames=16,
+            height=512,
+            width=512,
+        )
+        self._providers[animatediff.name] = animatediff
 
         if self.context is not None:
             self.context.event_bus.publish(
@@ -213,6 +222,85 @@ class MediaManager(BaseModule):
             self.context.event_bus.publish(
                 "media.video.completed",
                 {"output_path": str(output_path)},
+                source=self.name,
+            )
+        return result
+
+    def generate_video(
+        self,
+        prompt: str,
+        *,
+        negative_prompt: str = "",
+        provider_name: str = "animatediff",
+        num_frames: int = 16,
+        guidance_scale: float = 7.5,
+        progress_callback: ProgressCallback | None = None,
+    ) -> dict:
+        """Generate a video from a text prompt using AnimateDiff."""
+        settings = self.settings()
+        if not settings.enabled:
+            raise RuntimeError("Video generation is disabled in settings.")
+
+        clean_prompt = prompt.strip()
+        if not clean_prompt:
+            raise ValueError("Video prompt cannot be empty.")
+
+        provider = self._providers.get(provider_name)
+        if provider is None:
+            available = ", ".join(self._providers) or "none"
+            raise ValueError(f"Unknown video provider '{provider_name}'. Available: {available}")
+
+        provider_info = provider.info()
+        if not provider_info.available:
+            raise RuntimeError(provider_info.detail)
+
+        output_path = settings.output_directory / f"{new_id()}.mp4"
+
+        if self.context is not None:
+            self.context.event_bus.publish(
+                "media.video.generation.started",
+                {"provider": provider_name, "prompt": clean_prompt, "num_frames": num_frames},
+                source=self.name,
+            )
+
+        def _publish_progress(value: int, message: str, image_data: bytes | None = None) -> None:
+            if self.context is not None:
+                self.context.event_bus.publish(
+                    "media.video.generation.progress",
+                    {"provider": provider_name, "progress": value, "message": message},
+                    source=self.name,
+                )
+            if progress_callback is not None:
+                progress_callback(value, message, image_data)
+
+        try:
+            if provider_name == "animatediff":
+                result = provider.generate(
+                    clean_prompt,
+                    output_path,
+                    negative_prompt=negative_prompt or (
+                        "blurry, low quality, distorted, cartoon, anime, illustration, "
+                        "deformed face, bad anatomy, watermark, text"
+                    ),
+                    num_frames=num_frames,
+                    guidance_scale=guidance_scale,
+                    progress_callback=_publish_progress,
+                )
+            else:
+                raise ValueError(f"Unsupported video provider: {provider_name}")
+        except Exception as exc:
+            if self.context is not None:
+                self.context.event_bus.publish(
+                    "media.video.generation.failed",
+                    {"provider": provider_name, "error": str(exc)},
+                    source=self.name,
+                )
+            raise
+
+        if self.context is not None:
+            self.context.event_bus.publish(
+                "media.video.generation.completed",
+                {"path": str(output_path), "prompt": clean_prompt},
                 source=self.name,
             )
         return result

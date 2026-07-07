@@ -116,30 +116,53 @@ class ImageGenerationWorker(QObject):
 
 
 class VideoGenerationWorker(QObject):
+    progress = Signal(int, str)
     finished = Signal(object)
     failed = Signal(str)
 
     def __init__(
         self,
         media_manager: MediaManager,
-        image_paths: list[Path],
-        output_path: Path,
-        duration_per_image: float,
+        prompt_or_paths: str | list[Path],
+        output_path: Path | None = None,
+        duration_per_image: float | None = None,
+        num_frames: int | None = None,
+        negative_prompt: str | None = None,
     ) -> None:
         super().__init__()
         self.media_manager = media_manager
-        self.image_paths = image_paths
-        self.output_path = output_path
-        self.duration_per_image = duration_per_image
+        self.is_text_to_video = isinstance(prompt_or_paths, str)
+
+        if self.is_text_to_video:
+            self.prompt = prompt_or_paths
+            self.negative_prompt = negative_prompt or ""
+            self.num_frames = num_frames or 16
+        else:
+            self.image_paths = prompt_or_paths
+            self.output_path = output_path
+            self.duration_per_image = duration_per_image or 2.0
 
     def run(self) -> None:
         try:
-            result = self.media_manager.create_slideshow_video(
-                self.image_paths,
-                self.output_path,
-                duration_per_image=self.duration_per_image,
-            )
-            self.finished.emit(result)
+            if self.is_text_to_video:
+                def progress_callback(value: int, message: str, data: bytes | None = None) -> None:
+                    self.progress.emit(value, message)
+
+                result = self.media_manager.generate_video(
+                    self.prompt,
+                    negative_prompt=self.negative_prompt,
+                    provider_name="animatediff",
+                    num_frames=self.num_frames,
+                    progress_callback=progress_callback,
+                )
+                self.finished.emit(result)
+            else:
+                result = self.media_manager.create_slideshow_video(
+                    self.image_paths,
+                    self.output_path,
+                    duration_per_image=self.duration_per_image,
+                )
+                self.finished.emit(result)
         except Exception as exc:
             self.failed.emit(str(exc))
 
@@ -408,17 +431,76 @@ class TerryMainWindow(QMainWindow):
 
     def _video_page(self) -> QWidget:
         root = QWidget()
+        layout = QVBoxLayout(root)
+
+        title = QLabel("Video Generation")
+        title.setObjectName("PageTitle")
+        layout.addWidget(title)
+
+        tabs = QTabWidget()
+
+        # AnimateDiff text-to-video tab
+        text_to_video = self._text_to_video_tab()
+        tabs.addTab(text_to_video, "Text-to-Video (AnimateDiff)")
+
+        # Slideshow tab
+        slideshow = self._slideshow_tab()
+        tabs.addTab(slideshow, "Slideshow from Images")
+
+        layout.addWidget(tabs)
+        return root
+
+    def _text_to_video_tab(self) -> QWidget:
+        root = QWidget()
+        layout = QVBoxLayout(root)
+
+        self.video_prompt = QPlainTextEdit()
+        self.video_prompt.setPlaceholderText("Describe the video scene (e.g., 'a professional woman in business attire, realistic, 4k')")
+        self.video_prompt.setMaximumHeight(80)
+
+        self.video_negative_prompt = QPlainTextEdit()
+        self.video_negative_prompt.setPlaceholderText("Optional: what to avoid (e.g., 'cartoon, anime, distorted')")
+        self.video_negative_prompt.setMaximumHeight(60)
+
+        frame_row = QHBoxLayout()
+        frame_row.addWidget(QLabel("Frames:"))
+        self.video_frames = QLineEdit()
+        self.video_frames.setText("16")
+        self.video_frames.setMaximumWidth(60)
+        frame_row.addWidget(self.video_frames)
+        frame_row.addStretch()
+
+        self.video_status_anim = QLabel("Ready")
+        self.video_status_anim.setObjectName("MutedText")
+        self.video_progress_bar_anim = QProgressBar()
+        self.video_progress_bar_anim.setRange(0, 100)
+        self.video_progress_bar_anim.setValue(0)
+        self.video_progress_bar_anim.setTextVisible(True)
+
+        generate_button = QPushButton("Generate Video with AnimateDiff")
+        generate_button.clicked.connect(self._generate_text_to_video)
+
+        layout.addWidget(QLabel("Scene Description"))
+        layout.addWidget(self.video_prompt, 1)
+        layout.addWidget(QLabel("Negative Prompt (Optional)"))
+        layout.addWidget(self.video_negative_prompt)
+        layout.addLayout(frame_row)
+        layout.addWidget(self.video_status_anim)
+        layout.addWidget(self.video_progress_bar_anim)
+        layout.addWidget(generate_button)
+        layout.addStretch()
+        return root
+
+    def _slideshow_tab(self) -> QWidget:
+        root = QWidget()
         layout = QHBoxLayout(root)
 
         sidebar = QVBoxLayout()
-        title = QLabel("Video")
-        title.setObjectName("PageTitle")
         self.video_image_list = QListWidget()
         self.video_image_list.setSelectionMode(QListWidget.SelectionMode.MultiSelection)
         refresh_video_images_button = QPushButton("Refresh Images")
         refresh_video_images_button.clicked.connect(self._refresh_video_images)
-        sidebar.addWidget(title)
-        sidebar.addWidget(QLabel("Select Images for Video"))
+        sidebar.addWidget(QLabel("Select Images"))
         sidebar.addWidget(self.video_image_list, 1)
         sidebar.addWidget(refresh_video_images_button)
 
@@ -437,13 +519,14 @@ class TerryMainWindow(QMainWindow):
         self.generate_video_button = QPushButton("Create Slideshow Video")
         self.generate_video_button.clicked.connect(self._create_video)
 
-        main.addWidget(QLabel("Video output file"))
+        main.addWidget(QLabel("Output Video File"))
         main.addWidget(self.video_output_path)
-        main.addWidget(QLabel("Seconds per image"))
+        main.addWidget(QLabel("Seconds per Image"))
         main.addWidget(self.video_duration)
         main.addWidget(self.video_status)
         main.addWidget(self.video_progress_bar)
         main.addWidget(self.generate_video_button)
+        main.addStretch()
 
         layout.addLayout(sidebar, 1)
         layout.addLayout(main, 2)
@@ -462,6 +545,64 @@ class TerryMainWindow(QMainWindow):
             item.setData(Qt.ItemDataRole.UserRole, str(image.output_path))
             self.video_image_list.addItem(item)
         self.video_image_list.blockSignals(False)
+
+    def _generate_text_to_video(self) -> None:
+        prompt = self.video_prompt.toPlainText().strip()
+        if not prompt:
+            self.video_status_anim.setText("Enter a scene description first.")
+            return
+
+        negative_prompt = self.video_negative_prompt.toPlainText().strip()
+        try:
+            num_frames = int(self.video_frames.text().strip())
+        except ValueError:
+            self.video_status_anim.setText("Frames must be a number (e.g., 16).")
+            return
+
+        self.video_status_anim.setText("Initializing AnimateDiff...")
+        self._set_text_to_video_busy(True)
+
+        self.video_anim_thread = QThread()
+        self.video_anim_worker = VideoGenerationWorker(
+            self.media_manager,
+            prompt,
+            negative_prompt,
+            num_frames,
+        )
+        self.video_anim_worker.moveToThread(self.video_anim_thread)
+        self.video_anim_thread.started.connect(self.video_anim_worker.run)
+        self.video_anim_worker.progress.connect(self._on_anim_progress)
+        self.video_anim_worker.finished.connect(self._video_anim_finished)
+        self.video_anim_worker.failed.connect(self._video_anim_failed)
+        self.video_anim_worker.finished.connect(self.video_anim_thread.quit)
+        self.video_anim_worker.failed.connect(self.video_anim_thread.quit)
+        self.video_anim_worker.finished.connect(self.video_anim_worker.deleteLater)
+        self.video_anim_worker.failed.connect(self.video_anim_worker.deleteLater)
+        self.video_anim_thread.finished.connect(self.video_anim_thread.deleteLater)
+        self.video_anim_thread.start()
+
+    def _on_anim_progress(self, value: int, message: str) -> None:
+        self.video_status_anim.setText(message)
+        self.video_progress_bar_anim.setValue(value)
+
+    def _video_anim_finished(self, result: dict) -> None:
+        self.video_status_anim.setText(f"✓ Video saved: {Path(result['output_path']).name}")
+        self.video_progress_bar_anim.setValue(100)
+        self._set_text_to_video_busy(False)
+
+    def _video_anim_failed(self, message: str) -> None:
+        self.video_status_anim.setText(f"✗ Error: {message}")
+        self.video_progress_bar_anim.setValue(0)
+        self._set_text_to_video_busy(False)
+
+    def _set_text_to_video_busy(self, busy: bool) -> None:
+        if hasattr(self, "video_prompt"):
+            self.video_prompt.setDisabled(busy)
+        if hasattr(self, "video_negative_prompt"):
+            self.video_negative_prompt.setDisabled(busy)
+        if hasattr(self, "video_frames"):
+            self.video_frames.setDisabled(busy)
+        # Note: find and disable the generate button dynamically if needed
 
     def _create_video(self) -> None:
         selected_items = self.video_image_list.selectedItems()
@@ -487,7 +628,7 @@ class TerryMainWindow(QMainWindow):
             self.video_status.setText("Duration must be a number.")
             return
 
-        self.video_status.setText("Creating video...")
+        self.video_status.setText("Creating slideshow video...")
         self._set_video_busy(True)
 
         self.video_thread = QThread()
