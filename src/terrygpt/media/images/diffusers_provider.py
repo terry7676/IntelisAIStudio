@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import importlib.util
+import io
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from terrygpt.database.manager import new_id, utc_now
 from terrygpt.media.models import ImageGenerationRequest, ImageGenerationResult, ProviderInfo
-from terrygpt.media.provider import MediaProvider
+from terrygpt.media.provider import MediaProvider, ProgressCallback
 
 
 def _module_available(module_name: str) -> bool:
@@ -44,7 +46,12 @@ class StableDiffusionProvider(MediaProvider):
             )
         return ProviderInfo(self.name, True, f"Ready ({self.model_id})")
 
-    def generate(self, request: ImageGenerationRequest, output_path: Path) -> ImageGenerationResult:
+    def generate(
+        self,
+        request: ImageGenerationRequest,
+        output_path: Path,
+        progress_callback: ProgressCallback | None = None,
+    ) -> ImageGenerationResult:
         if not self.info().available:
             raise RuntimeError(self.info().detail)
 
@@ -66,12 +73,34 @@ class StableDiffusionProvider(MediaProvider):
         if request.seed is not None:
             generator = torch.Generator(device=self._device).manual_seed(request.seed)
 
+        def _send_preview(step: int, timestep: int, latents: torch.Tensor) -> None:
+            if progress_callback is None:
+                return
+            try:
+                progress = int(((step + 1) / request.num_inference_steps) * 100)
+                message = f"Rendering step {step + 1}/{request.num_inference_steps}"
+                images = self._pipeline.decode_latents(latents)
+                if hasattr(self._pipeline, "numpy_to_pil"):
+                    preview_image = self._pipeline.numpy_to_pil(images)[0]
+                elif isinstance(images, list):
+                    preview_image = images[0]
+                else:
+                    preview_image = images
+                buffer = io.BytesIO()
+                preview_image.save(buffer, format="PNG")
+                progress_callback(progress, message, buffer.getvalue())
+            except Exception:
+                # Ignore preview generation preview errors so final rendering still completes
+                pass
+
         image = self._pipeline(
             prompt=request.prompt,
             negative_prompt=negative_prompt,
             num_inference_steps=request.num_inference_steps,
             guidance_scale=request.guidance_scale,
             generator=generator,
+            callback=_send_preview,
+            callback_steps=1,
         ).images[0]
 
         output_path.parent.mkdir(parents=True, exist_ok=True)

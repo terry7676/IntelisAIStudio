@@ -12,7 +12,7 @@ def _init_project(config_path: str | None) -> int:
     plugins = getattr(core.module("plugin_loader"), "list_plugins")()
     core.stop()
 
-    print("TerryGPT initialized.")
+    print("IntelisAi Studio initialized.")
     print(f"Project folder: {config.project_root}")
     print(f"Database: {config.database.path}")
     print(f"Log file: {config.logging.path}")
@@ -22,7 +22,7 @@ def _init_project(config_path: str | None) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="terrygpt")
+    parser = argparse.ArgumentParser(prog="intelisai-studio")
     parser.add_argument("--config", help="Path to a TOML config file.")
 
     subparsers = parser.add_subparsers(dest="command")

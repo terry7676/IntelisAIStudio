@@ -1,8 +1,8 @@
 [database]
-path = "data/terrygpt.sqlite"
+path = "data/intelisai.sqlite"
 
 [logging]
-path = "data/logs/terrygpt.log"
+path = "data/logs/intelisai.log"
 level = "INFO"
 
 [ollama]
@@ -18,7 +18,7 @@ top_p = 0.9
 maximum_tokens = 2048
 streaming_enabled = true
 memory_enabled = true
-system_prompt = "You are TerryGPT, a local-first assistant running on Terry's Windows PC."
+system_prompt = "You are IntelisAi Studio, a local-first assistant running on the user's PC."
 
 [api]
 host = "127.0.0.1"
@@ -42,7 +42,7 @@ allow_terminal_commands = false
 api_enabled = false
 
 [theme]
-name = "TerryGPT Dark"
+name = "IntelisAi Studio Dark"
 accent_color = "#3b82f6"
 
 [voice]

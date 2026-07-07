@@ -1,4 +1,4 @@
-# TerryGPT Phase 1 Architecture
+# IntelisAi Studio Phase 1 Architecture
 
 ## Layers
 
@@ -12,12 +12,12 @@
 ## Chat Flow
 
 1. The user sends a message.
-2. TerryGPT saves the user message in SQLite.
-3. TerryGPT sends the conversation to Ollama.
+2. IntelisAi Studio saves the user message in SQLite.
+3. IntelisAi Studio sends the conversation to Ollama.
 4. Ollama streams chunks back.
-5. TerryGPT shows the chunks in the desktop app or API.
-6. TerryGPT saves the assistant message.
-7. TerryGPT stores a searchable memory record.
+5. IntelisAi Studio shows the chunks in the desktop app or API.
+6. IntelisAi Studio saves the assistant message.
+7. IntelisAi Studio stores a searchable memory record.
 
 ## API Flow
 
@@ -33,5 +33,5 @@
 3. Each plugin folder contains `plugin.py`.
 4. `plugin.py` exposes `create_plugin()`.
 5. The plugin returns command functions.
-6. TerryGPT can list and run those commands.
+6. IntelisAi Studio can list and run those commands.
 

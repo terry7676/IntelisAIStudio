@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QListWidget,
     QListWidgetItem,
+    QProgressBar,
     QMainWindow,
     QPlainTextEdit,
     QPushButton,
@@ -59,11 +60,15 @@ class BrainChatWorker(QObject):
         self.ai_manager = ai_manager
         self.conversation_id = conversation_id
         self.message = message
+        self.stop_requested = False
 
     def run(self) -> None:
         final_conversation_id = self.conversation_id or ""
         try:
             for chunk in self.ai_manager.stream_response(self.conversation_id, self.message):
+                if self.stop_requested:
+                    self.finished.emit(final_conversation_id, "[Stream stopped by user]")
+                    return
                 if chunk.conversation_id:
                     final_conversation_id = chunk.conversation_id
                 if chunk.error:
@@ -77,6 +82,7 @@ class BrainChatWorker(QObject):
 
 
 class ImageGenerationWorker(QObject):
+    progress = Signal(int, str, object)
     finished = Signal(object)
     failed = Signal(str)
 
@@ -95,10 +101,43 @@ class ImageGenerationWorker(QObject):
 
     def run(self) -> None:
         try:
+            def on_progress(value: int, message: str, image_bytes: bytes | None = None) -> None:
+                self.progress.emit(value, message, image_bytes)
+
             result = self.media_manager.generate_image(
                 self.prompt,
                 negative_prompt=self.negative_prompt,
                 provider_name=self.provider_name,
+                progress_callback=on_progress,
+            )
+            self.finished.emit(result)
+        except Exception as exc:
+            self.failed.emit(str(exc))
+
+
+class VideoGenerationWorker(QObject):
+    finished = Signal(object)
+    failed = Signal(str)
+
+    def __init__(
+        self,
+        media_manager: MediaManager,
+        image_paths: list[Path],
+        output_path: Path,
+        duration_per_image: float,
+    ) -> None:
+        super().__init__()
+        self.media_manager = media_manager
+        self.image_paths = image_paths
+        self.output_path = output_path
+        self.duration_per_image = duration_per_image
+
+    def run(self) -> None:
+        try:
+            result = self.media_manager.create_slideshow_video(
+                self.image_paths,
+                self.output_path,
+                duration_per_image=self.duration_per_image,
             )
             self.finished.emit(result)
         except Exception as exc:
@@ -121,7 +160,7 @@ class TerryMainWindow(QMainWindow):
         self.image_thread: QThread | None = None
         self.image_worker: ImageGenerationWorker | None = None
         self.notifications: list[str] = []
-        self.setWindowTitle("TerryGPT Core Engine")
+        self.setWindowTitle("IntelisAi Studio")
         self.resize(1360, 860)
         self.setStyleSheet(DARK_STYLESHEET)
 
@@ -139,7 +178,7 @@ class TerryMainWindow(QMainWindow):
         self.pages.addWidget(self._locked_page("Files", "File tools are not enabled in Phase 2."))
         self.pages.addWidget(self._locked_page("Documents", "Document processing is not enabled in Phase 2."))
         self.pages.addWidget(self._images_page())
-        self.pages.addWidget(self._locked_page("Video", "Video tools are not enabled in Phase 2."))
+        self.pages.addWidget(self._video_page())
         self.pages.addWidget(self._locked_page("Audio", "Audio tools are not enabled in Phase 2."))
         self.pages.addWidget(self._locked_page("Automation", "Automation execution is not enabled in Phase 2."))
         self.pages.addWidget(self._memory_page())
@@ -163,7 +202,7 @@ class TerryMainWindow(QMainWindow):
         self._add_dock("Notifications", self.notification_text, Qt.DockWidgetArea.BottomDockWidgetArea)
 
         self.setStatusBar(QStatusBar())
-        self.statusBar().showMessage("TerryGPT Core Engine running")
+        self.statusBar().showMessage("IntelisAi Studio running")
 
         self.core.context.event_bus.subscribe("notification.created", self._on_notification)
         self.core.context.event_bus.subscribe("module.failed", self._on_module_failed)
@@ -192,7 +231,7 @@ class TerryMainWindow(QMainWindow):
     def _home_page(self) -> QWidget:
         root = QWidget()
         layout = QVBoxLayout(root)
-        title = QLabel("TerryGPT Core Engine")
+        title = QLabel("IntelisAi Studio")
         title.setObjectName("PageTitle")
         layout.addWidget(title)
 
@@ -279,14 +318,18 @@ class TerryMainWindow(QMainWindow):
         self.chat_output = QTextEdit()
         self.chat_output.setReadOnly(True)
         self.chat_input = QLineEdit()
-        self.chat_input.setPlaceholderText("Send a message to TerryGPT")
-        self.chat_input.returnPressed.connect(self._send_chat_message)
+        self.chat_input.setPlaceholderText("Send a message to IntelisAi Studio (or 'generate image of...' for images)")
+        self.chat_input.returnPressed.connect(self._send_or_stop_chat)
         self.send_chat_button = QPushButton("Send")
-        self.send_chat_button.clicked.connect(self._send_chat_message)
+        self.send_chat_button.clicked.connect(self._send_or_stop_chat)
+        self.stop_chat_button = QPushButton("Stop")
+        self.stop_chat_button.clicked.connect(self._stop_chat)
+        self.stop_chat_button.setVisible(False)
 
         composer = QHBoxLayout()
         composer.addWidget(self.chat_input, 1)
         composer.addWidget(self.send_chat_button)
+        composer.addWidget(self.stop_chat_button)
 
         main.addWidget(title)
         main.addLayout(model_row)
@@ -334,6 +377,10 @@ class TerryMainWindow(QMainWindow):
 
         self.image_status = QLabel("Ready")
         self.image_status.setObjectName("MutedText")
+        self.image_progress_bar = QProgressBar()
+        self.image_progress_bar.setRange(0, 100)
+        self.image_progress_bar.setValue(0)
+        self.image_progress_bar.setTextVisible(True)
         self.image_preview = QLabel("Generated image preview")
         self.image_preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.image_preview.setMinimumHeight(320)
@@ -348,6 +395,7 @@ class TerryMainWindow(QMainWindow):
         main.addWidget(QLabel("Negative Prompt"))
         main.addWidget(self.image_negative_prompt)
         main.addWidget(self.image_status)
+        main.addWidget(self.image_progress_bar)
         main.addWidget(self.image_preview, 2)
         main.addWidget(self.generate_image_button)
 
@@ -357,6 +405,129 @@ class TerryMainWindow(QMainWindow):
         self._refresh_image_providers()
         self._refresh_image_gallery()
         return root
+
+    def _video_page(self) -> QWidget:
+        root = QWidget()
+        layout = QHBoxLayout(root)
+
+        sidebar = QVBoxLayout()
+        title = QLabel("Video")
+        title.setObjectName("PageTitle")
+        self.video_image_list = QListWidget()
+        self.video_image_list.setSelectionMode(QListWidget.SelectionMode.MultiSelection)
+        refresh_video_images_button = QPushButton("Refresh Images")
+        refresh_video_images_button.clicked.connect(self._refresh_video_images)
+        sidebar.addWidget(title)
+        sidebar.addWidget(QLabel("Select Images for Video"))
+        sidebar.addWidget(self.video_image_list, 1)
+        sidebar.addWidget(refresh_video_images_button)
+
+        main = QVBoxLayout()
+        self.video_status = QLabel("Ready")
+        self.video_status.setObjectName("MutedText")
+        self.video_progress_bar = QProgressBar()
+        self.video_progress_bar.setRange(0, 100)
+        self.video_progress_bar.setValue(0)
+        self.video_output_path = QLineEdit()
+        self.video_output_path.setPlaceholderText("Output video path")
+        self.video_output_path.setText(str(Path("data/media") / "slideshow.mp4"))
+        self.video_duration = QLineEdit()
+        self.video_duration.setPlaceholderText("Duration per image (seconds)")
+        self.video_duration.setText("2.0")
+        self.generate_video_button = QPushButton("Create Slideshow Video")
+        self.generate_video_button.clicked.connect(self._create_video)
+
+        main.addWidget(QLabel("Video output file"))
+        main.addWidget(self.video_output_path)
+        main.addWidget(QLabel("Seconds per image"))
+        main.addWidget(self.video_duration)
+        main.addWidget(self.video_status)
+        main.addWidget(self.video_progress_bar)
+        main.addWidget(self.generate_video_button)
+
+        layout.addLayout(sidebar, 1)
+        layout.addLayout(main, 2)
+
+        self._refresh_video_images()
+        return root
+
+    def _refresh_video_images(self) -> None:
+        if not hasattr(self, "video_image_list"):
+            return
+        images = self.media_manager.list_recent_images()
+        self.video_image_list.blockSignals(True)
+        self.video_image_list.clear()
+        for image in images:
+            item = QListWidgetItem(image.output_path.name)
+            item.setData(Qt.ItemDataRole.UserRole, str(image.output_path))
+            self.video_image_list.addItem(item)
+        self.video_image_list.blockSignals(False)
+
+    def _create_video(self) -> None:
+        selected_items = self.video_image_list.selectedItems()
+        if not selected_items:
+            self.video_status.setText("Select one or more images first.")
+            return
+
+        image_paths = []
+        for item in selected_items:
+            path = item.data(Qt.ItemDataRole.UserRole)
+            if isinstance(path, str):
+                image_paths.append(Path(path))
+
+        output_path = Path(self.video_output_path.text().strip())
+        if not output_path:
+            self.video_status.setText("Enter a valid output path.")
+            return
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+
+        try:
+            duration_per_image = float(self.video_duration.text().strip())
+        except ValueError:
+            self.video_status.setText("Duration must be a number.")
+            return
+
+        self.video_status.setText("Creating video...")
+        self._set_video_busy(True)
+
+        self.video_thread = QThread()
+        self.video_worker = VideoGenerationWorker(
+            self.media_manager,
+            image_paths,
+            output_path,
+            duration_per_image,
+        )
+        self.video_worker.moveToThread(self.video_thread)
+        self.video_thread.started.connect(self.video_worker.run)
+        self.video_worker.finished.connect(self._video_finished)
+        self.video_worker.failed.connect(self._video_failed)
+        self.video_worker.finished.connect(self.video_thread.quit)
+        self.video_worker.failed.connect(self.video_thread.quit)
+        self.video_worker.finished.connect(self.video_worker.deleteLater)
+        self.video_worker.failed.connect(self.video_worker.deleteLater)
+        self.video_thread.finished.connect(self.video_thread.deleteLater)
+        self.video_thread.start()
+
+    def _video_finished(self, result: object) -> None:
+        if isinstance(result, dict) and "output_path" in result:
+            self.video_status.setText(f"Saved video to {result['output_path']}")
+        else:
+            self.video_status.setText("Video creation completed.")
+        self.video_progress_bar.setValue(100)
+        self._set_video_busy(False)
+
+    def _video_failed(self, message: str) -> None:
+        self.video_status.setText(f"Error: {message}")
+        self.video_progress_bar.setValue(0)
+        self._set_video_busy(False)
+
+    def _set_video_busy(self, busy: bool) -> None:
+        self.generate_video_button.setDisabled(busy)
+        self.video_image_list.setDisabled(busy)
+        self.video_output_path.setDisabled(busy)
+        self.video_duration.setDisabled(busy)
+        if not busy:
+            self.video_progress_bar.setValue(0)
 
     def _memory_page(self) -> QWidget:
         root = QWidget()
@@ -545,8 +716,22 @@ class TerryMainWindow(QMainWindow):
         self.active_conversation_id = conversation_id
         self.chat_output.clear()
         for message in self.ai_manager.messages(conversation_id):
-            speaker = "You" if message.role == "user" else "TerryGPT"
+            speaker = "You" if message.role == "user" else "IntelisAi Studio"
             self.chat_output.append(f"<b>{speaker}:</b> {message.content}")
+
+    def _send_or_stop_chat(self) -> None:
+        if self.send_chat_button.text() == "Send":
+            self._send_chat_message()
+        else:
+            self._stop_chat()
+
+    def _stop_chat(self) -> None:
+        if self.chat_thread and self.chat_thread.isRunning():
+            if self.chat_worker:
+                self.chat_worker.stop_requested = True
+            self.chat_thread.quit()
+            self.chat_thread.wait()
+        self._set_chat_busy(False)
 
     def _send_chat_message(self) -> None:
         text = self.chat_input.text().strip()
@@ -554,7 +739,7 @@ class TerryMainWindow(QMainWindow):
             return
         self.chat_input.clear()
         self.chat_output.append(f"<b>You:</b> {text}")
-        self.chat_output.append("<b>TerryGPT:</b> ")
+        self.chat_output.append("<b>IntelisAi Studio:</b> ")
         self._set_chat_busy(True)
 
         self.chat_thread = QThread()
@@ -589,7 +774,13 @@ class TerryMainWindow(QMainWindow):
 
     def _set_chat_busy(self, busy: bool) -> None:
         self.chat_input.setDisabled(busy)
-        self.send_chat_button.setDisabled(busy)
+        if busy:
+            self.send_chat_button.setVisible(False)
+            self.stop_chat_button.setVisible(True)
+            self.send_chat_button.setText("Send")
+        else:
+            self.send_chat_button.setVisible(True)
+            self.stop_chat_button.setVisible(False)
 
     def _refresh_image_providers(self) -> None:
         if not hasattr(self, "image_provider_combo"):
@@ -639,6 +830,8 @@ class TerryMainWindow(QMainWindow):
             return
 
         self.image_status.setText("Generating image...")
+        self.image_progress_bar.setValue(0)
+        self.image_preview.setText("Rendering preview...")
         self._set_image_busy(True)
 
         self.image_thread = QThread()
@@ -650,6 +843,7 @@ class TerryMainWindow(QMainWindow):
         )
         self.image_worker.moveToThread(self.image_thread)
         self.image_thread.started.connect(self.image_worker.run)
+        self.image_worker.progress.connect(self._update_image_progress)
         self.image_worker.finished.connect(self._image_finished)
         self.image_worker.failed.connect(self._image_failed)
         self.image_worker.finished.connect(self.image_thread.quit)
@@ -659,7 +853,21 @@ class TerryMainWindow(QMainWindow):
         self.image_thread.finished.connect(self.image_thread.deleteLater)
         self.image_thread.start()
 
+    def _update_image_progress(self, value: int, message: str, image_data: object) -> None:
+        self.image_progress_bar.setValue(max(0, min(100, value)))
+        self.image_status.setText(message)
+        if isinstance(image_data, (bytes, bytearray)) and image_data:
+            pixmap = QPixmap()
+            if pixmap.loadFromData(image_data):
+                scaled = pixmap.scaled(
+                    self.image_preview.size(),
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation,
+                )
+                self.image_preview.setPixmap(scaled)
+
     def _image_finished(self, result: object) -> None:
+        self.image_progress_bar.setValue(100)
         if isinstance(result, ImageGenerationResult):
             self.image_status.setText(f"Saved to {result.output_path}")
             self._show_image_preview(result.output_path)
@@ -667,6 +875,7 @@ class TerryMainWindow(QMainWindow):
         self._set_image_busy(False)
 
     def _image_failed(self, message: str) -> None:
+        self.image_progress_bar.setValue(0)
         self.image_status.setText(f"Error: {message}")
         self._set_image_busy(False)
 
@@ -687,6 +896,8 @@ class TerryMainWindow(QMainWindow):
         self.image_prompt.setDisabled(busy)
         self.image_negative_prompt.setDisabled(busy)
         self.image_provider_combo.setDisabled(busy)
+        if not busy:
+            self.image_progress_bar.setValue(0)
 
     def _refresh_logs(self) -> None:
         log_dir = self.core.context.config.logging.path.parent

@@ -319,7 +319,21 @@ class AIManager(BaseModule):
             )
 
     def _select_model(self, settings: BrainSettings):
-        return self._models().choose(settings.provider_name, settings.default_model or None)
+        # Try to find model with configured provider/name
+        model = self._models().choose(settings.provider_name, settings.default_model or None)
+        if model is not None:
+            return model
+        
+        # Only fall back if the configured provider exists but has no models
+        # (not if the provider doesn't exist at all)
+        available_providers = set(self._providers().list_providers())
+        if settings.provider_name in available_providers:
+            # Provider exists, just has no models - try any available model
+            all_models = self._models().list()
+            if all_models:
+                return all_models[0]
+        
+        return None
 
     def _safety_check(self, response: str) -> str:
         return response.strip()

@@ -22,7 +22,7 @@ These routes require:
 Authorization: Bearer YOUR_LOCAL_TOKEN
 ```
 
-The token is created by:
+The token is created by IntelisAi Studio using:
 
 ```powershell
 python -m terrygpt init

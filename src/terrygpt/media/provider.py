@@ -1,8 +1,13 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from pathlib import Path
+from typing import Callable
 
 from terrygpt.media.models import ImageGenerationRequest, ImageGenerationResult, ProviderInfo
+
+
+ProgressCallback = Callable[[int, str, bytes | None], None]
 
 
 class MediaProvider(ABC):
@@ -18,5 +23,10 @@ class MediaProvider(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def generate(self, request: ImageGenerationRequest, output_path) -> ImageGenerationResult:
+    def generate(
+        self,
+        request: ImageGenerationRequest,
+        output_path: Path,
+        progress_callback: ProgressCallback | None = None,
+    ) -> ImageGenerationResult:
         raise NotImplementedError

@@ -28,7 +28,7 @@ def run_desktop(config_path: Path | None = None) -> int:
     splash_pixmap = QPixmap(520, 220)
     splash_pixmap.fill(Qt.GlobalColor.black)
     splash = QSplashScreen(splash_pixmap)
-    splash.showMessage("Starting TerryGPT Core Engine...", Qt.AlignmentFlag.AlignCenter, Qt.GlobalColor.white)
+    splash.showMessage("Starting IntelisAi Studio...", Qt.AlignmentFlag.AlignCenter, Qt.GlobalColor.white)
     splash.show()
     app.processEvents()
 
@@ -53,7 +53,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.no_gui:
         core = initialize_core(config_path)
         core.stop()
-        print("TerryGPT Core Engine initialized successfully.")
+        print("IntelisAi Studio Core Engine initialized successfully.")
         return 0
     return run_desktop(config_path)
 

@@ -34,7 +34,7 @@ def create_app(config: TerryConfig | None = None):
     token_store = ApiTokenStore(active_config.api.token_path)
     token_store.get_or_create_token()
 
-    app = FastAPI(title="TerryGPT API", version="0.1.0")
+    app = FastAPI(title="IntelisAi Studio API", version="0.1.0")
 
     def require_auth(authorization: Annotated[str | None, Header()] = None) -> None:
         prefix = "Bearer "

@@ -1,8 +1,8 @@
-# TerryGPT
+# IntelisAi Studio
 
-TerryGPT is a local-first AI operating system project for Windows.
+IntelisAi Studio is a local-first AI operating system project for Windows.
 
-Phase 3 adds the TerryGPT Brain. It is not the full operating system yet.
+Phase 3 adds the IntelisAi Studio Brain. It is not the full operating system yet.
 
 ## What Phase 2 Includes
 
@@ -52,7 +52,7 @@ Those belong in later phases.
 
 ## Folder Map
 
-1. `main.py` starts TerryGPT.
+1. `main.py` starts IntelisAi Studio.
 2. `src/terrygpt/app` starts the application.
 3. `src/terrygpt/core` contains the Core Manager and Event Bus.
 4. `src/terrygpt/configuration` stores persistent runtime settings.
@@ -69,7 +69,7 @@ Those belong in later phases.
 15. `plugins` contains installable plugins.
 16. `tests` contains verification tests.
 17. `docs` contains architecture and security notes.
-18. `data` is created when TerryGPT runs.
+18. `data` is created when IntelisAi Studio runs.
 19. `src/terrygpt/brain` contains the intelligence layer.
 
 ## Setup
@@ -108,7 +108,7 @@ python -m pip install -e ".[dev]"
 
 7. Make sure Ollama is running and has at least one local model installed.
 
-8. Start TerryGPT:
+8. Start IntelisAi Studio:
 
 ```powershell
 python main.py
@@ -140,7 +140,7 @@ The health URL is:
 http://127.0.0.1:8765/health
 ```
 
-Protected API routes require a bearer token. TerryGPT creates it in:
+Protected API routes require a bearer token. IntelisAi Studio creates it in:
 
 ```text
 data/secrets.toml
@@ -176,4 +176,4 @@ The sample plugin lives here:
 plugins/hello_terry
 ```
 
-It proves that TerryGPT can load a plugin without changing the main code.
+It proves that IntelisAi Studio can load a plugin without changing the main code.

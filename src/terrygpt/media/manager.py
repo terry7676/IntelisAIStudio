@@ -2,14 +2,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable
 
 from terrygpt.configuration.manager import ConfigurationManager
 from terrygpt.core.module import BaseModule, ModuleHealth
 from terrygpt.database.manager import new_id, utc_now
 from terrygpt.media.images.diffusers_provider import StableDiffusionProvider
+from terrygpt.media.videos.generator import VideoGenerator
 from terrygpt.media.models import ImageGenerationRequest, ImageGenerationResult, ProviderInfo
-from terrygpt.media.provider import MediaProvider
+from terrygpt.media.provider import MediaProvider, ProgressCallback
 
 if TYPE_CHECKING:
     from terrygpt.config import TerryConfig
@@ -50,6 +51,9 @@ class MediaManager(BaseModule):
             default_negative_prompt=settings.negative_prompt,
         )
         self._providers[stable_diffusion.name] = stable_diffusion
+
+        video_gen = VideoGenerator()
+        self._providers[video_gen.name] = video_gen
 
         if self.context is not None:
             self.context.event_bus.publish(
@@ -99,6 +103,7 @@ class MediaManager(BaseModule):
         seed: int | None = None,
         num_inference_steps: int | None = None,
         guidance_scale: float | None = None,
+        progress_callback: ProgressCallback | None = None,
     ) -> ImageGenerationResult:
         settings = self.settings()
         if not settings.enabled:
@@ -135,8 +140,18 @@ class MediaManager(BaseModule):
                 source=self.name,
             )
 
+        def _publish_progress(value: int, message: str, image_data: bytes | None = None) -> None:
+            if self.context is not None:
+                self.context.event_bus.publish(
+                    "media.generation.progress",
+                    {"provider": selected_provider, "progress": value, "message": message},
+                    source=self.name,
+                )
+            if progress_callback is not None:
+                progress_callback(value, message, image_data)
+
         try:
-            result = provider.generate(request, output_path)
+            result = provider.generate(request, output_path, progress_callback=_publish_progress)
         except Exception as exc:
             if self.context is not None:
                 self.context.event_bus.publish(
@@ -151,6 +166,53 @@ class MediaManager(BaseModule):
             self.context.event_bus.publish(
                 "media.generation.completed",
                 {"id": result.id, "path": str(result.output_path)},
+                source=self.name,
+            )
+        return result
+
+    def create_slideshow_video(
+        self,
+        image_paths: list[Path],
+        output_path: Path,
+        duration_per_image: float = 2.0,
+    ) -> dict[str, object]:
+        if not image_paths:
+            raise ValueError("At least one image is required to create a slideshow video.")
+
+        provider = self._providers.get("video_generator")
+        if provider is None:
+            raise RuntimeError("Video provider is unavailable.")
+
+        provider_info = provider.info()
+        if not provider_info.available:
+            raise RuntimeError(provider_info.detail)
+
+        if self.context is not None:
+            self.context.event_bus.publish(
+                "media.video.started",
+                {"image_count": len(image_paths), "output_path": str(output_path)},
+                source=self.name,
+            )
+
+        try:
+            result = provider.create_slideshow(
+                image_paths,
+                output_path,
+                duration_per_image=duration_per_image,
+            )
+        except Exception as exc:
+            if self.context is not None:
+                self.context.event_bus.publish(
+                    "media.video.failed",
+                    {"error": str(exc)},
+                    source=self.name,
+                )
+            raise
+
+        if self.context is not None:
+            self.context.event_bus.publish(
+                "media.video.completed",
+                {"output_path": str(output_path)},
                 source=self.name,
             )
         return result

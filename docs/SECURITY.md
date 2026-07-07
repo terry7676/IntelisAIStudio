@@ -8,7 +8,7 @@ That means the API listens on the local PC by default.
 
 ## API Token
 
-TerryGPT creates a local token file at:
+IntelisAi Studio creates a local token file at:
 
 ```text
 data/secrets.toml
@@ -31,7 +31,7 @@ Phase 1 does not execute those actions.
 
 ## Remote Access
 
-Phase 1 does not expose TerryGPT to the public internet.
+Phase 1 does not expose IntelisAi Studio to the public internet.
 
 Remote phone access should be added later with a private network tool such as Tailscale.
 

@@ -9,7 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from terrygpt.media.models import ImageGenerationRequest, ImageGenerationResult, ProviderInfo
-from terrygpt.media.provider import MediaProvider
+from terrygpt.media.provider import MediaProvider, ProgressCallback
 
 
 class ComfyUIProvider(MediaProvider):
@@ -25,5 +25,10 @@ class ComfyUIProvider(MediaProvider):
     def info(self) -> ProviderInfo:
         return ProviderInfo(self.name, False, "ComfyUI generation is not implemented yet.")
 
-    def generate(self, request: ImageGenerationRequest, output_path: Path) -> ImageGenerationResult:
+    def generate(
+        self,
+        request: ImageGenerationRequest,
+        output_path: Path,
+        progress_callback: ProgressCallback | None = None,
+    ) -> ImageGenerationResult:
         raise NotImplementedError("ComfyUI generation is not implemented yet.")

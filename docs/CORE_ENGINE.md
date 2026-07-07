@@ -1,4 +1,4 @@
-# TerryGPT Core Engine
+# IntelisAi Studio Core Engine
 
 ## Purpose
 

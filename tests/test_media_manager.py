@@ -12,7 +12,7 @@ from terrygpt.config import load_config
 from terrygpt.core.manager import CoreManager
 from terrygpt.media.manager import MediaManager
 from terrygpt.media.models import ImageGenerationRequest, ImageGenerationResult, ProviderInfo
-from terrygpt.media.provider import MediaProvider
+from terrygpt.media.provider import MediaProvider, ProgressCallback
 
 
 class FakeImageProvider(MediaProvider):
@@ -23,9 +23,18 @@ class FakeImageProvider(MediaProvider):
     def info(self) -> ProviderInfo:
         return ProviderInfo(self.name, True, "Fake provider for tests")
 
-    def generate(self, request: ImageGenerationRequest, output_path: Path) -> ImageGenerationResult:
+    def generate(
+        self,
+        request: ImageGenerationRequest,
+        output_path: Path,
+        progress_callback: ProgressCallback | None = None,
+    ) -> ImageGenerationResult:
         output_path.parent.mkdir(parents=True, exist_ok=True)
+        if progress_callback is not None:
+            progress_callback(50, "Generating fake image", None)
         output_path.write_bytes(b"fake-image")
+        if progress_callback is not None:
+            progress_callback(100, "Fake image complete", None)
         return ImageGenerationResult(
             id=output_path.stem,
             prompt=request.prompt,

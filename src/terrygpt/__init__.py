@@ -1,4 +1,4 @@
-"""TerryGPT local-first AI operating system."""
+"""IntelisAi Studio local-first AI operating system."""
 
 from terrygpt.version import __version__
 

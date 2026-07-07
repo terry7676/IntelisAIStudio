@@ -1,4 +1,4 @@
-# TerryGPT Brain
+# IntelisAi Studio Brain
 
 ## Purpose
 

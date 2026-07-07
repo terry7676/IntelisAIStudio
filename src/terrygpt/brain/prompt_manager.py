@@ -15,8 +15,8 @@ class PromptManager:
         self.database = database
 
     def ensure_defaults(self, system_prompt: str) -> None:
-        if self.get_active("terrygpt_system") is None:
-            self.create("terrygpt_system", "system", system_prompt, active=True)
+        if self.get_active("intelisai_system") is None:
+            self.create("intelisai_system", "system", system_prompt, active=True)
 
     def create(self, name: str, prompt_type: str, template: str, active: bool = True) -> PromptTemplate:
         clean_name = name.strip()

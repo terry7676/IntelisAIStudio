@@ -4,6 +4,7 @@ import logging
 from pathlib import Path
 
 from terrygpt.ai.providers import AIProviderRegistry, OllamaProvider
+from terrygpt.ai.lmstudio import LMStudioProvider
 from terrygpt.app.dependencies import DependencyChecker
 from terrygpt.brain.manager import AIManager
 from terrygpt.config import load_config
@@ -44,6 +45,11 @@ class CoreManager:
         configuration = ConfigurationManager(config.project_root)
         dependencies = DependencyChecker(config.project_root)
         ai_registry = AIProviderRegistry()
+        ai_registry.register_provider(
+                    LMStudioProvider(    "http://127.0.0.1:1234",   
+                                          
+        )
+        )
         ai_registry.register_provider(OllamaProvider(config.ollama.base_url, config.ollama.request_timeout_seconds))
 
         manager.register(database)

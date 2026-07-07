@@ -64,7 +64,7 @@ class BrainSettings:
     maximum_tokens: int = 2048
     streaming_enabled: bool = True
     memory_enabled: bool = True
-    system_prompt: str = "You are TerryGPT, a local-first assistant running on Terry's Windows PC."
+    system_prompt: str = "You are IntelisAi Studio, a local-first assistant running on the user's PC."
 
 
 @dataclass(frozen=True)

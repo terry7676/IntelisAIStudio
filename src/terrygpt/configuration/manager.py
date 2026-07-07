@@ -17,7 +17,7 @@ DEFAULT_RUNTIME_SETTINGS: dict[str, dict[str, Any]] = {
         "maximum_tokens": 2048,
         "streaming_enabled": True,
         "memory_enabled": True,
-        "system_prompt": "You are TerryGPT, a local-first assistant running on Terry's Windows PC.",
+        "system_prompt": "You are IntelisAi Studio, a local-first assistant running on the user's PC.",
     },
     "hardware": {
         "gpu_enabled": True,

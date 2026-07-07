@@ -2,8 +2,8 @@ DARK_STYLESHEET = """
 QMainWindow, QWidget {
     background: #101419;
     color: #d7dde5;
-    font-family: Segoe UI, Arial, sans-serif;
-    font-size: 13px;
+    font-family: 'Segoe UI', Arial, sans-serif;
+    font-size: 11pt;
 }
 QListWidget#Navigation {
     background: #0b0f14;
@@ -53,13 +53,13 @@ QDockWidget {
     titlebar-normal-icon: none;
 }
 QLabel#PageTitle {
-    font-size: 24px;
+    font-size: 18pt;
     font-weight: 700;
     padding: 8px 0;
 }
 QLabel#MutedText {
     color: #8b949e;
-    font-size: 14px;
+    font-size: 10pt;
 }
 QStatusBar {
     background: #0b0f14;

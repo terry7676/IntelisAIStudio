@@ -48,4 +48,4 @@ The migration also repairs older Phase 1 databases that do not yet have `status`
 
 SQLite is local, free, reliable, and simple to back up.
 
-It fits TerryGPT's local-first goal.
+It fits IntelisAi Studio's local-first goal.
